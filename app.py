@@ -17,7 +17,6 @@ import torch
 from transformers import AutoTokenizer
 import soundfile as sf
 import numpy as np
-
 # Load environment variables from .env file
 load_dotenv()
 
@@ -30,6 +29,10 @@ FARM_FILES = {
     'FarmD': 'farm_d_data.csv'
 }
 
+# In-memory cache for farm data (for efficiency)
+_farm_data_cache = None
+_farm_data_cache_timestamp = None
+
 def load_farm_data(farm_name):
     """Load CSV data for a specific farm"""
     if farm_name in FARM_FILES and os.path.exists(FARM_FILES[farm_name]):
@@ -40,7 +43,20 @@ def load_farm_data(farm_name):
     return pd.DataFrame()
 
 def load_all_farms_data():
-    """Load data from all farms for comparison"""
+    """Load data from all farms for comparison (cached in memory for efficiency)"""
+    global _farm_data_cache, _farm_data_cache_timestamp
+    
+    # Check if cache is still valid (reload if files were modified)
+    current_timestamps = {}
+    for farm_name, file_path in FARM_FILES.items():
+        if os.path.exists(file_path):
+            current_timestamps[farm_name] = os.path.getmtime(file_path)
+    
+    # Use cache if it exists and files haven't changed
+    if _farm_data_cache is not None and _farm_data_cache_timestamp == current_timestamps:
+        return _farm_data_cache
+    
+    # Load fresh data
     all_data = {}
     for farm_name, file_path in FARM_FILES.items():
         if os.path.exists(file_path):
@@ -48,7 +64,18 @@ def load_all_farms_data():
             if 'HarvestDate' in df.columns:
                 df['HarvestDate'] = pd.to_datetime(df['HarvestDate'])
             all_data[farm_name] = df
+    
+    # Update cache
+    _farm_data_cache = all_data
+    _farm_data_cache_timestamp = current_timestamps
+    
     return all_data
+
+def clear_farm_data_cache():
+    """Clear the cached farm data (useful if CSV files are updated)"""
+    global _farm_data_cache, _farm_data_cache_timestamp
+    _farm_data_cache = None
+    _farm_data_cache_timestamp = None
 
 @app.route('/')
 def index():
@@ -1439,7 +1466,7 @@ def chatbot():
                 system_prompt,
                 generation_config=genai.types.GenerationConfig(
                     temperature=0.7,
-                    max_output_tokens=500,
+                    max_output_tokens=1000,  # Increased for more detailed responses
                 )
             )
             
