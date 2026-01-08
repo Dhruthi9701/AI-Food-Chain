@@ -6,13 +6,11 @@ import time
 import numpy as np
 import requests
 
-# -------------------- CONFIG ---------------------
 ESPCAM_IP = "172.20.10.2"
 ESPCAM_PORT = 81
 STREAM_URL = f"http://{ESPCAM_IP}:{ESPCAM_PORT}/stream"
 CAPTURE_URL = f"http://{ESPCAM_IP}:{ESPCAM_PORT}/capture"
-USE_STREAM = True   # Force MJPEG stream mode
-# --------------------------------------------------
+USE_STREAM = True  
 
 print("Loading YOLO model...")
 model = YOLO("yolov8x.pt")
@@ -20,10 +18,10 @@ model = YOLO("yolov8x.pt")
 allowed = ["person","bird","cat","dog","horse","sheep","cow",
            "elephant","bear","zebra","giraffe"]
 
-# Flask app
+
 app = Flask(__name__)
 
-# Globals
+
 frame_lock = threading.Lock()
 current_frame = None
 detection_running = True
@@ -36,7 +34,6 @@ stats = {
     "last_detection": "None"
 }
 
-# -------------------- STREAM INIT ---------------------
 
 def init_stream():
     """Open MJPEG stream WITHOUT TCP check."""
@@ -45,7 +42,6 @@ def init_stream():
 
     stream_cap = cv2.VideoCapture(STREAM_URL)
 
-    # Try reading 3 frames to confirm
     for _ in range(3):
         ret, frame = stream_cap.read()
         if ret and frame is not None:
@@ -56,7 +52,6 @@ def init_stream():
     print("✗ Could not read from MJPEG stream.")
     return False
 
-# -------------------- FALLBACK CAPTURE ---------------
 
 def fetch_frame_from_capture():
     """Fetch single JPEG snapshot."""
@@ -70,7 +65,6 @@ def fetch_frame_from_capture():
         pass
     return None
 
-# -------------------- FETCH STREAM ---------------------
 
 def fetch_frame_from_stream():
     global stream_cap
@@ -82,7 +76,6 @@ def fetch_frame_from_stream():
         return frame
     return None
 
-# -------------------- DETECTION THREAD -----------------
 
 def detect_objects():
     global current_frame, stream_cap, detection_running
@@ -100,7 +93,7 @@ def detect_objects():
     while detection_running:
         start = time.time()
 
-        # 1️⃣ Try stream
+
         frame = None
         if use_stream_mode:
             frame = fetch_frame_from_stream()
@@ -108,7 +101,7 @@ def detect_objects():
                 print("Stream failed → switching to /capture")
                 use_stream_mode = False
 
-        # 2️⃣ Try capture
+        
         if not use_stream_mode:
             frame = fetch_frame_from_capture()
 
@@ -116,7 +109,7 @@ def detect_objects():
             time.sleep(0.05)
             continue
 
-        # YOLO inference
+ 
         results = model(frame)[0]
 
         keep = []
@@ -131,19 +124,16 @@ def detect_objects():
         results.boxes = keep
         annotated = results.plot()
 
-        # Stats
         stats["frames_processed"] += 1
         if detected_now:
             stats["detections"] += len(detected_now)
             stats["last_detection"] = ", ".join(set(detected_now))
 
-        # FPS
         frame_times.append(time.time() - start)
         if len(frame_times) > 30:
             frame_times.pop(0)
         stats["fps"] = 1 / (sum(frame_times) / len(frame_times))
 
-        # Overlay
         cv2.putText(annotated,
                     f"FPS: {stats['fps']:.1f}",
                     (10, 30),
@@ -157,13 +147,12 @@ def detect_objects():
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7,
                         (0,255,0), 2)
 
-        # Save frame
+
         with frame_lock:
             current_frame = annotated.copy()
 
         time.sleep(0.02)
 
-# -------------------- STREAM TO BROWSER -----------------
 
 def generate_frames():
     global current_frame
@@ -181,7 +170,7 @@ def generate_frames():
         yield (b"--frame\r\n"
                b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
 
-# -------------------- FLASK ROUTES ---------------------
+
 
 @app.route("/")
 def index():
@@ -216,7 +205,6 @@ def video_feed():
 def get_stats():
     return jsonify(stats)
 
-# -------------------- MAIN ---------------------
 
 if __name__ == "__main__":
     th = threading.Thread(target=detect_objects, daemon=True)
