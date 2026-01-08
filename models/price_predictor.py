@@ -6,7 +6,6 @@ import joblib
 import os
 import matplotlib.pyplot as plt
 
-# Field name mapping from new CSV format
 FIELD_NAME_MAPPING = {
     'Fertilizerkgperha': 'Fertilizer_kg_per_ha',
     'SoilMoisture%': 'SoilMoisture_%',
@@ -65,7 +64,6 @@ def normalize_column_names(df):
         df = df.rename(columns=rename_dict)
     return df
 
-# --- 1. CSV Reader Function (Uses REAL modalprice) ---
 def load_data_for_sarima_training(file_path: str, crop_type: str) -> pd.Series:
     """
     Loads data, filters by crop type, uses HarvestDate for the index, and prepares 
@@ -83,18 +81,15 @@ def load_data_for_sarima_training(file_path: str, crop_type: str) -> pd.Series:
         print(f"Error: Farm data file not found at {file_path}. Returning empty series.")
         return pd.Series()
 
-    # 1. Filter by CropType
     df_crop = df[df['CropType'].str.lower() == crop_type.lower()].copy()
 
     if df_crop.empty:
         print(f"Error: No records found for crop '{crop_type}'.")
         return pd.Series()
 
-    # 2. Create Time Series Index
     df_crop['HarvestDate'] = pd.to_datetime(df_crop['HarvestDate'])
     df_crop = df_crop.sort_values('HarvestDate').set_index('HarvestDate')
 
-    # 3. Use REAL Modal Price Data
     if 'modalprice' not in df_crop.columns:
          print(f"Error: 'modalprice' column not found for {crop_type}. Cannot train model.")
          return pd.Series()
@@ -102,17 +97,13 @@ def load_data_for_sarima_training(file_path: str, crop_type: str) -> pd.Series:
     price_series = df_crop['modalprice'].copy()
     price_series.name = f'{crop_type.capitalize()}_ModalPrice'
 
-    # 4. Data Cleaning
     cleaned_prices = price_series.replace([np.inf, -np.inf], np.nan)
     cleaned_prices = cleaned_prices.ffill().bfill()
-    
-    # 5. Resample to Monthly Frequency ('MS') for m=12 seasonality
-    # Use the mean price for that month to aggregate batch data.
+   
     cleaned_prices_monthly = cleaned_prices.resample('MS').mean().ffill().dropna()
 
     return cleaned_prices_monthly
 
-# --- 2. Model Training and Saving Function (Stabilized) ---
 def train_and_save_sarima_model(crop_name: str, historical_prices: pd.Series):
     """
     Trains the best SARIMA model using auto_arima with fallbacks.
@@ -125,11 +116,9 @@ def train_and_save_sarima_model(crop_name: str, historical_prices: pd.Series):
         print(f"Cannot train model for {crop_name}: Data is empty.")
         return None, None
 
-    # Data validation checks
     if len(historical_prices) < 12:
         print(f"Warning: {crop_name} has only {len(historical_prices)} data points. Less than 12 months of data.")
-    
-    # Check for constant series (no variance)
+
     if historical_prices.std() == 0:
         print(f"Warning: {crop_name} has zero variance (all values are the same). Using mean model fallback.")
         from pmdarima.arima import ARIMA
@@ -142,14 +131,13 @@ def train_and_save_sarima_model(crop_name: str, historical_prices: pd.Series):
             print(f"Error: Could not create model for {crop_name}: {e}")
             return None, None
 
-    # Try auto_arima with full seasonality
     try:
         print("Attempting seasonal auto_arima fit...")
         stepwise_fit = auto_arima(
             historical_prices, 
             start_p=0, start_q=0,
             max_p=2, max_q=2,
-            m=12,  # Monthly data seasonality
+            m=12, 
             start_P=0, seasonal=True, 
             d=1, D=1,
             with_intercept=False,
@@ -169,13 +157,12 @@ def train_and_save_sarima_model(crop_name: str, historical_prices: pd.Series):
         print(f"✗ Seasonal auto_arima failed: {e}")
         print("Attempting non-seasonal auto_arima fit...")
         
-        # Fallback 1: Try non-seasonal ARIMA
         try:
             stepwise_fit = auto_arima(
                 historical_prices, 
                 start_p=0, start_q=0,
                 max_p=2, max_q=2,
-                m=1,  # Non-seasonal
+                m=1, 
                 seasonal=False, 
                 d=1,
                 with_intercept=False,
@@ -193,8 +180,7 @@ def train_and_save_sarima_model(crop_name: str, historical_prices: pd.Series):
         except ValueError as e2:
             print(f"✗ Non-seasonal auto_arima also failed: {e2}")
             print("Attempting fixed ARIMA(1,1,1) model...")
-            
-            # Fallback 2: Use fixed ARIMA order
+
             try:
                 from pmdarima.arima import ARIMA
                 stepwise_fit = ARIMA(order=(1, 1, 1)).fit(historical_prices)
@@ -205,8 +191,7 @@ def train_and_save_sarima_model(crop_name: str, historical_prices: pd.Series):
             except Exception as e3:
                 print(f"✗ ARIMA(1,1,1) failed: {e3}")
                 print("Attempting simple differencing model ARIMA(0,1,0)...")
-                
-                # Fallback 3: Simplest differencing model
+
                 try:
                     from pmdarima.arima import ARIMA
                     stepwise_fit = ARIMA(order=(0, 1, 0)).fit(historical_prices)
