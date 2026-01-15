@@ -213,10 +213,8 @@ def save_model(model, crop_name: str, historical_prices: pd.Series):
     print(f"Model successfully saved to {save_path}")
 
 
-# --- 3. Execution Block ---
 if __name__ == '__main__':
-    
-    # Define paths to updated farm data CSV files
+  
     FARM_DATA_FILES = [
         'updated_farm_data/updated_farm_a_data.csv',
         'updated_farm_data/updated_farm_b_data.csv',
@@ -224,28 +222,26 @@ if __name__ == '__main__':
         'updated_farm_data/updated_farm_d_data.csv'
     ]
     
-    # Define the crops you want to train models for
-    # Ensure these crop types exist in your CSV file!
+ 
     CROPS_TO_TRAIN = ['tomato', 'corn', 'lettuce', 'wheat']
     
     fitted_models = {}
 
-    # Iterate through all farm data files
     for farm_file in FARM_DATA_FILES:
         print(f"\n{'='*60}")
         print(f"Processing: {farm_file}")
         print(f"{'='*60}")
         
         for crop in CROPS_TO_TRAIN:
-            # 1. Load data for the current crop
+      
             price_series = load_data_for_sarima_training(
                 file_path=farm_file, 
                 crop_type=crop
             )
 
-            # Check if enough data exists (at least 2 years/24 points for good seasonality analysis)
+        
             if not price_series.empty and len(price_series) >= 12: 
-                # 2. Train and Save the Model
+             
                 model_name = f'{crop.lower()}_price'
                 fitted_model, cleaned_data = train_and_save_sarima_model(model_name, price_series)
                 if fitted_model:
@@ -257,7 +253,7 @@ if __name__ == '__main__':
     print("--- All required models training attempts complete. Check the 'models' directory. ---")
     print("="*60)
     
-    # --- 4. Visualization Check (Example for the first successful model) ---
+
     if fitted_models:
         first_model_name = list(fitted_models.keys())[0]
         fitted_model, cleaned_data = fitted_models[first_model_name]
